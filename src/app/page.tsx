@@ -33,8 +33,25 @@ export default function Home() {
   const handleScanEmails = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch(`/api/emails/scan?days=${daysFilter}`)
+      // Get tokens from URL parameters
+      const urlParams = new URLSearchParams(window.location.search)
+      const tokensParam = urlParams.get('tokens')
+      
+      if (!tokensParam) {
+        console.error('No tokens found')
+        return
+      }
+
+      const response = await fetch(`/api/emails/scan?days=${daysFilter}`, {
+        headers: {
+          'Authorization': `Bearer ${tokensParam}`
+        }
+      })
       const data = await response.json()
+      if (data.error) {
+        console.error('Error scanning emails:', data.error)
+        return
+      }
       setCoupons(data.coupons)
     } catch (error) {
       console.error('Error scanning emails:', error)

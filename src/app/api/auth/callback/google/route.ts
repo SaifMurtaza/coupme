@@ -20,7 +20,11 @@ export async function GET(request: NextRequest) {
     client.setCredentials(tokens)
     const email = await client.getUserEmail()
 
+    // Encode tokens for URL
+    const encodedTokens = Buffer.from(JSON.stringify(tokens)).toString('base64')
     const redirectUrl = new URL('/?success=true', request.url)
+    redirectUrl.searchParams.set('tokens', encodedTokens)
+    
     return NextResponse.redirect(redirectUrl)
   } catch (error) {
     console.error('Error in callback:', error)
