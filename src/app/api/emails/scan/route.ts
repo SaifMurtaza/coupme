@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     const messages = await client.listEmails(searchQuery)
     
     console.log(`Found ${messages.length} messages`)
-    const coupons = extractCouponsFromEmails(messages)
+    const coupons = await extractCouponsFromEmails(messages)
     console.log(`Extracted ${coupons.length} coupons`)
 
     return NextResponse.json({ coupons })

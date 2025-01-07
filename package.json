@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google-cloud/local-auth": "^2.1.0",
+    "@huggingface/inference": "^2.8.1",
     "@types/node": "20.10.6",
     "@types/react": "18.2.46",
     "@types/react-dom": "18.2.18",
@@ -25,4 +26,4 @@
     "tailwindcss": "3.4.0",
     "typescript": "5.3.3"
   }
-} 
+}

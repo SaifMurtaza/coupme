@@ -1,4 +1,5 @@
 import { CouponData } from '@/types/email'
+import { HfInference } from '@huggingface/inference'
 
 const COUPON_PATTERNS = [
   /\b[A-Z0-9]{4,20}\b/,
@@ -13,6 +14,8 @@ const DISCOUNT_PATTERNS = [
   /(\d+)%\s*discount/i,
   /\$(\d+)\s*off/i,
 ]
+
+const hf = new HfInference(process.env.HUGGINGFACE_API_KEY)
 
 function extractStore(email: any): string {
   const fromHeader = email.payload.headers.find((h: any) => h.name === 'From')
@@ -121,7 +124,44 @@ function decodeBase64(str: string): string {
   return Buffer.from(str.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString()
 }
 
-export function extractCouponsFromEmails(emails: any[]): CouponData[] {
+async function generateSummary(content: string): Promise<string> {
+  try {
+    const cleanContent = content
+      .replace(/<[^>]*>/g, ' ') // Remove HTML tags
+      .replace(/\{[^}]+\}/g, ' ') // Remove CSS
+      .replace(/https?:\/\/\S+/g, ' ') // Remove URLs
+      .replace(/[^\w\s%$.,!?-]/g, ' ') // Remove special characters
+      .replace(/\s+/g, ' ') // Clean up whitespace
+      .trim()
+
+    const prompt = `
+      Summarize this promotional email in 1-2 clear, concise sentences. Focus on the main offer or discount:
+      ${cleanContent.slice(0, 500)}
+    `.trim()
+
+    // Using FLAN-T5 model for summarization
+    const response = await hf.summarization({
+      model: 'google/flan-t5-base',
+      inputs: prompt,
+      parameters: {
+        max_length: 100,
+        min_length: 30,
+        temperature: 0.3
+      }
+    })
+
+    const summary = response.summary_text.trim()
+    
+    // Clean up and format the summary
+    return summary.charAt(0).toUpperCase() + summary.slice(1) + 
+           (summary.endsWith('.') ? '' : '.')
+  } catch (error) {
+    console.error('Error generating summary:', error)
+    return extractDescription(content) // Fallback to regex-based extraction
+  }
+}
+
+export async function extractCouponsFromEmails(emails: any[]): Promise<CouponData[]> {
   const coupons: CouponData[] = []
 
   for (const email of emails) {
@@ -138,7 +178,7 @@ export function extractCouponsFromEmails(emails: any[]): CouponData[] {
       const store = extractStore(email)
       const code = extractCode(content)
       const discount = extractDiscount(content)
-      const description = extractDescription(content)
+      const description = await generateSummary(content)
 
       if (discount || code !== 'NO_CODE_NEEDED') {
         coupons.push({
