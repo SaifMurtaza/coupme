@@ -134,9 +134,19 @@ export default function Home() {
                     <div className="border rounded-lg p-4 hover:bg-pink-50 hover:border-pink-200 transition-colors">
                       <h3 className="font-semibold text-lg">{coupon.store}</h3>
                       {coupon.code !== 'NO_CODE_NEEDED' && (
-                        <p className="text-primary font-mono mt-2">
-                          Code: {coupon.code}
-                        </p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-primary font-mono">Code:</span>
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault()
+                              navigator.clipboard.writeText(coupon.code)
+                            }}
+                            className="font-mono bg-pink-50 px-2 py-1 rounded hover:bg-pink-100 transition-colors"
+                            title="Click to copy"
+                          >
+                            {coupon.code}
+                          </button>
+                        </div>
                       )}
                       <p className="text-gray-600 mt-2">{coupon.description}</p>
                       {coupon.expiryDate && (

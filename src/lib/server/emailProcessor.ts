@@ -51,20 +51,23 @@ function extractDescription(content: string): string {
     .replace(/<[^>]*>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
+    .replace(/https?:\/\/[^\s]+/g, '') // Remove URLs
+    .replace(/\{[^}]+\}/g, '') // Remove CSS
+    .replace(/[^\w\s%$.,!?-]/g, ' ') // Remove special characters except common ones
+    .replace(/\s+/g, ' ') // Clean up extra spaces
 
-  // Get the first 2-3 sentences that contain offer details
+  // Get the first sentence that contains offer details
   const sentences = cleanContent.split(/[.!?]/)
-  const relevantSentences = sentences
-    .filter(sentence => 
-      sentence.toLowerCase().includes('off') ||
-      sentence.toLowerCase().includes('save') ||
-      sentence.toLowerCase().includes('discount') ||
-      sentence.toLowerCase().includes('deal')
-    )
-    .slice(0, 2)
-    .join('. ')
+  const relevantSentence = sentences.find(sentence => 
+    sentence.toLowerCase().includes('off') ||
+    sentence.toLowerCase().includes('save') ||
+    sentence.toLowerCase().includes('discount') ||
+    sentence.toLowerCase().includes('deal')
+  )
 
-  return relevantSentences || cleanContent.slice(0, 150)
+  return relevantSentence ? 
+    relevantSentence.trim() + '.' : 
+    cleanContent.split(/[.!?]/)[0].trim() + '.'
 }
 
 function decodeBase64(str: string): string {
