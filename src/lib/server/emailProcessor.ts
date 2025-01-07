@@ -126,12 +126,16 @@ function decodeBase64(str: string): string {
 
 async function generateSummary(content: string): Promise<string> {
   try {
+    // Temporarily use regex-based extraction while we debug Hugging Face integration
+    return extractDescription(content)
+
+    /* Commenting out Hugging Face integration for now
     const cleanContent = content
-      .replace(/<[^>]*>/g, ' ') // Remove HTML tags
-      .replace(/\{[^}]+\}/g, ' ') // Remove CSS
-      .replace(/https?:\/\/\S+/g, ' ') // Remove URLs
-      .replace(/[^\w\s%$.,!?-]/g, ' ') // Remove special characters
-      .replace(/\s+/g, ' ') // Clean up whitespace
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\{[^}]+\}/g, ' ')
+      .replace(/https?:\/\/\S+/g, ' ')
+      .replace(/[^\w\s%$.,!?-]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim()
 
     const prompt = `
@@ -144,34 +148,31 @@ async function generateSummary(content: string): Promise<string> {
       ${cleanContent.slice(0, 500)}
     `.trim()
 
-    // Using FLAN-T5 model for summarization
     const response = await hf.summarization({
       model: 'google/flan-t5-base',
       inputs: prompt,
       parameters: {
-        max_length: 75,  // Shorter to encourage conciseness
-        min_length: 20,  // Ensure we get a complete sentence
-        temperature: 0.2 // Lower temperature for more focused output
+        max_length: 75,
+        min_length: 20,
+        temperature: 0.2
       }
     })
 
     let summary = response.summary_text.trim()
-    
-    // Clean up and format the summary
     summary = summary.charAt(0).toUpperCase() + summary.slice(1)
     if (!summary.endsWith('.')) {
       summary += '.'
     }
 
-    // If the summary doesn't contain any promotional content, fall back to regex
     if (!summary.toLowerCase().match(/(off|save|discount|deal|sale|extra|exclusive)/)) {
       return extractDescription(content)
     }
 
     return summary
+    */
   } catch (error) {
     console.error('Error generating summary:', error)
-    return extractDescription(content) // Fallback to regex-based extraction
+    return extractDescription(content)
   }
 }
 
