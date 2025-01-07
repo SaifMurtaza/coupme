@@ -23,11 +23,20 @@ function extractStore(email: any): string {
 }
 
 function extractCode(content: string): string {
+  // Clean the content first
+  const cleanContent = content
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
   for (const pattern of COUPON_PATTERNS) {
     const match = content.match(pattern)
     if (match) {
       const code = match[1] || match[0]
-      if (code.length >= 4 && code.length <= 20) {
+      // Only accept codes that look legitimate
+      if (code.length >= 4 && code.length <= 20 && 
+          !/mso|width|height|margin|padding|DOCTYPE|HTML/i.test(code) &&
+          !/^[0-9]+$/.test(code)) { // Exclude pure numbers
         return code
       }
     }
@@ -46,28 +55,42 @@ function extractDiscount(content: string): string {
 }
 
 function extractDescription(content: string): string {
-  // Remove HTML tags and clean up whitespace
+  // Remove HTML tags, CSS, and technical content
   const cleanContent = content
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/https?:\/\/[^\s]+/g, '') // Remove URLs
-    .replace(/\{[^}]+\}/g, '') // Remove CSS
+    .replace(/<[^>]*>/g, ' ') // Remove HTML tags
+    .replace(/\{[^}]+\}/g, ' ') // Remove CSS
+    .replace(/https?:\/\/\S+/g, ' ') // Remove URLs
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, ' ') // Remove emails
+    .replace(/\.mso\b[^}]*}/g, ' ') // Remove MSO styles
+    .replace(/\b\w+_\w+(_\w+)*\.mso\b/g, ' ') // Remove MSO class names
+    .replace(/\b(span|div|td|tr|table|body|center|h[1-6]|ul|li|p)\b/g, ' ') // Remove HTML element names
     .replace(/[^\w\s%$.,!?-]/g, ' ') // Remove special characters except common ones
-    .replace(/\s+/g, ' ') // Clean up extra spaces
+    .replace(/\s+/g, ' ') // Clean up whitespace
+    .trim()
 
-  // Get the first sentence that contains offer details
+  // Split into sentences and find promotional content
   const sentences = cleanContent.split(/[.!?]/)
-  const relevantSentence = sentences.find(sentence => 
-    sentence.toLowerCase().includes('off') ||
-    sentence.toLowerCase().includes('save') ||
-    sentence.toLowerCase().includes('discount') ||
-    sentence.toLowerCase().includes('deal')
-  )
+  const promotionalSentence = sentences.find(sentence => {
+    const lower = sentence.toLowerCase().trim()
+    return (
+      lower.includes('off') ||
+      lower.includes('save') ||
+      lower.includes('discount') ||
+      lower.includes('deal') ||
+      lower.includes('sale')
+    ) && !lower.includes('mso') && // Exclude sentences with technical terms
+       !lower.includes('width') &&
+       !lower.includes('height') &&
+       !lower.includes('margin') &&
+       !lower.includes('padding')
+  })
 
-  return relevantSentence ? 
-    relevantSentence.trim() + '.' : 
-    cleanContent.split(/[.!?]/)[0].trim() + '.'
+  if (promotionalSentence) {
+    return promotionalSentence.trim() + '.'
+  }
+
+  // If no promotional sentence found, return empty string
+  return ''
 }
 
 function decodeBase64(str: string): string {
