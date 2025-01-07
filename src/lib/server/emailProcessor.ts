@@ -135,7 +135,12 @@ async function generateSummary(content: string): Promise<string> {
       .trim()
 
     const prompt = `
-      Summarize this promotional email in 1-2 clear, concise sentences. Focus on the main offer or discount:
+      Extract and summarize the main promotional offer from this email in one clear sentence. 
+      Focus only on discounts, sales, or special offers.
+      If there are specific numbers (like percentages or dollar amounts), include them.
+      Make it direct and actionable.
+
+      Email content:
       ${cleanContent.slice(0, 500)}
     `.trim()
 
@@ -144,17 +149,26 @@ async function generateSummary(content: string): Promise<string> {
       model: 'google/flan-t5-base',
       inputs: prompt,
       parameters: {
-        max_length: 100,
-        min_length: 30,
-        temperature: 0.3
+        max_length: 75,  // Shorter to encourage conciseness
+        min_length: 20,  // Ensure we get a complete sentence
+        temperature: 0.2 // Lower temperature for more focused output
       }
     })
 
-    const summary = response.summary_text.trim()
+    let summary = response.summary_text.trim()
     
     // Clean up and format the summary
-    return summary.charAt(0).toUpperCase() + summary.slice(1) + 
-           (summary.endsWith('.') ? '' : '.')
+    summary = summary.charAt(0).toUpperCase() + summary.slice(1)
+    if (!summary.endsWith('.')) {
+      summary += '.'
+    }
+
+    // If the summary doesn't contain any promotional content, fall back to regex
+    if (!summary.toLowerCase().match(/(off|save|discount|deal|sale|extra|exclusive)/)) {
+      return extractDescription(content)
+    }
+
+    return summary
   } catch (error) {
     console.error('Error generating summary:', error)
     return extractDescription(content) // Fallback to regex-based extraction
