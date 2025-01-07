@@ -68,28 +68,52 @@ function extractDescription(content: string): string {
     .replace(/\s+/g, ' ') // Clean up whitespace
     .trim()
 
-  // Split into sentences and find promotional content
-  const sentences = cleanContent.split(/[.!?]/)
-  const promotionalSentence = sentences.find(sentence => {
-    const lower = sentence.toLowerCase().trim()
-    return (
-      lower.includes('off') ||
-      lower.includes('save') ||
-      lower.includes('discount') ||
-      lower.includes('deal') ||
-      lower.includes('sale')
-    ) && !lower.includes('mso') && // Exclude sentences with technical terms
-       !lower.includes('width') &&
-       !lower.includes('height') &&
-       !lower.includes('margin') &&
-       !lower.includes('padding')
-  })
+  // Split into sentences
+  const sentences = cleanContent.split(/[.!?]/).filter(s => s.trim().length > 0)
 
-  if (promotionalSentence) {
-    return promotionalSentence.trim() + '.'
+  // Look for sentences with promotional content
+  for (const sentence of sentences) {
+    const lower = sentence.toLowerCase().trim()
+    
+    // Skip sentences with technical terms or non-promotional content
+    if (lower.includes('mso') || 
+        lower.includes('width') ||
+        lower.includes('height') ||
+        lower.includes('margin') ||
+        lower.includes('padding') ||
+        lower.includes('doctype') ||
+        lower.includes('charset') ||
+        lower.includes('unsubscribe')) {
+      continue
+    }
+
+    // Look for promotional keywords
+    if (lower.includes('off') ||
+        lower.includes('save') ||
+        lower.includes('discount') ||
+        lower.includes('deal') ||
+        lower.includes('sale') ||
+        lower.includes('extra') ||
+        lower.includes('exclusive')) {
+      
+      // Clean up the sentence
+      let cleaned = sentence.trim()
+        .replace(/^[^a-zA-Z0-9]+/, '') // Remove leading special characters
+        .replace(/\s+/g, ' ') // Clean up spaces
+        .trim()
+
+      // Add period if missing
+      if (!cleaned.endsWith('.')) {
+        cleaned += '.'
+      }
+
+      // Capitalize first letter
+      cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+
+      return cleaned
+    }
   }
 
-  // If no promotional sentence found, return empty string
   return ''
 }
 

@@ -133,6 +133,9 @@ export default function Home() {
                   >
                     <div className="border rounded-lg p-4 hover:bg-pink-50 hover:border-pink-200 transition-colors">
                       <h3 className="font-semibold text-lg">{coupon.store}</h3>
+                      {coupon.description && (
+                        <p className="text-gray-600 mt-2 mb-3">{coupon.description}</p>
+                      )}
                       {coupon.code !== 'NO_CODE_NEEDED' && (
                         <div className="mt-2 flex items-center gap-2">
                           <span className="text-primary font-mono">Code:</span>
@@ -148,7 +151,6 @@ export default function Home() {
                           </button>
                         </div>
                       )}
-                      <p className="text-gray-600 mt-2">{coupon.description}</p>
                       {coupon.expiryDate && (
                         <p className="text-sm text-gray-500 mt-2">
                           Expires: {new Date(coupon.expiryDate).toLocaleDateString('en-US', {
