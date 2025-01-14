@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { GmailClient } from '@/lib/server/gmail'
 import { extractCouponsFromEmails } from '@/lib/server/emailProcessor'
 
-export const maxDuration = 300 // Set max duration to 5 minutes
-export const dynamic = 'force-dynamic' // Disable caching
+// Switch to Node.js runtime
+export const dynamic = 'force-dynamic'
+export const maxDuration = 300
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,68 +14,137 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get('Authorization')
     if (!authHeader) {
       console.error('No authorization header found')
-      return NextResponse.json(
-        { error: 'Authorization required' },
-        { status: 401 }
-      )
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Authorization required'
+      }), { 
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    let tokens
+    try {
+      tokens = JSON.parse(Buffer.from(authHeader.split(' ')[1], 'base64').toString())
+      console.log('Successfully parsed tokens')
+    } catch (tokenError) {
+      console.error('Error parsing tokens:', tokenError)
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Invalid authorization token'
+      }), { 
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    const searchParams = request.nextUrl.searchParams
+    const days = parseInt(searchParams.get('days') || '14')
+    const afterDate = new Date()
+    afterDate.setDate(afterDate.getDate() - days)
+    const afterString = afterDate.toISOString().split('T')[0]
+    console.log(`Scanning emails from ${afterString}`)
+
+    const client = new GmailClient(
+      process.env.GMAIL_CLIENT_ID!,
+      process.env.GMAIL_CLIENT_SECRET!,
+      process.env.NEXTAUTH_URL + '/api/auth/callback/google'
+    )
+
+    // Set the credentials from the auth header
+    client.setCredentials(tokens)
+    console.log('Client credentials set successfully')
+
+    // Verify we can access the Gmail account
+    try {
+      const userEmail = await client.getUserEmail()
+      console.log(`Successfully connected to Gmail account: ${userEmail}`)
+    } catch (emailError) {
+      console.error('Error verifying Gmail access:', emailError)
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Failed to access Gmail account. Please try connecting again.'
+      }), { 
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    console.log('Executing Gmail search query...')
+    const searchQuery = `{
+      category:promotions 
+      (subject:"coupon" OR subject:"promo" OR subject:"discount" OR subject:"sale" OR subject:"offer" OR subject:"deal" OR subject:"save" OR subject:"%" OR subject:"exclusive" OR subject:"special")
+      after:${afterString}
+    }`.replace(/\s+/g, ' ').trim()
+    console.log('Search query:', searchQuery)
+    
+    let messages
+    try {
+      messages = await client.listEmails(searchQuery)
+      console.log(`Found ${messages?.length || 0} matching emails`)
+
+      if (!messages || messages.length === 0) {
+        console.log('No matching emails found')
+        return new Response(JSON.stringify({
+          success: true,
+          coupons: [],
+          hasMore: false,
+          totalFound: 0
+        }), { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      }
+    } catch (searchError) {
+      console.error('Error searching emails:', searchError)
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Failed to search emails. Please try again later.'
+      }), { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    // Limit the number of emails to process to avoid timeout
+    const maxEmails = 25
+    const limitedMessages = messages.slice(0, maxEmails)
+    if (messages.length > maxEmails) {
+      console.log(`Processing only first ${maxEmails} emails to avoid timeout`)
     }
 
     try {
-      const tokens = JSON.parse(Buffer.from(authHeader.split(' ')[1], 'base64').toString())
-      console.log('Successfully parsed tokens from header')
-
-      const searchParams = request.nextUrl.searchParams
-      const days = parseInt(searchParams.get('days') || '14')
-      const afterDate = new Date()
-      afterDate.setDate(afterDate.getDate() - days)
-      const afterString = afterDate.toISOString().split('T')[0]
-      console.log(`Scanning emails from ${afterString}`)
-
-      const client = new GmailClient(
-        process.env.GMAIL_CLIENT_ID!,
-        process.env.GMAIL_CLIENT_SECRET!,
-        process.env.NEXTAUTH_URL + '/api/auth/callback/google'
-      )
-
-      // Set the credentials from the auth header
-      client.setCredentials(tokens)
-      console.log('Client credentials set successfully')
-
-      console.log('Executing Gmail search query...')
-      const searchQuery = `(category:promotions (subject:(coupon OR promo OR discount OR sale OR % off OR savings) OR (coupon OR promo OR discount OR sale OR % off OR savings)) after:${afterString})`
-      
-      // Add timeout to listEmails
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Gmail API timeout')), 60000)
-      )
-      const messagesPromise = client.listEmails(searchQuery)
-      const messages = await Promise.race([messagesPromise, timeoutPromise]) as any[]
-      
-      console.log(`Found ${messages.length} matching emails`)
-      
-      if (messages.length === 0) {
-        return NextResponse.json({ coupons: [] })
-      }
-
       console.log('Processing emails for coupons...')
-      const coupons = await extractCouponsFromEmails(messages)
+      const coupons = await extractCouponsFromEmails(limitedMessages)
       console.log(`Successfully extracted ${coupons.length} coupons`)
 
-      return NextResponse.json({ coupons })
-    } catch (parseError) {
-      console.error('Error parsing or using tokens:', parseError)
-      const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown error'
-      return NextResponse.json(
-        { error: 'Failed to process request', details: errorMessage },
-        { status: 401 }
-      )
+      return new Response(JSON.stringify({
+        success: true,
+        coupons,
+        hasMore: messages.length > maxEmails,
+        totalFound: messages.length
+      }), { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    } catch (processingError) {
+      console.error('Error processing emails:', processingError)
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Error processing emails. Please try again later.'
+      }), { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      })
     }
   } catch (error) {
-    console.error('Error scanning emails:', error)
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json(
-      { error: 'Failed to scan emails', details: errorMessage },
-      { status: 500 }
-    )
+    console.error('Unexpected error:', error)
+    return new Response(JSON.stringify({
+      success: false,
+      error: 'An unexpected error occurred. Please try again later.'
+    }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    })
   }
 } 

@@ -7,6 +7,7 @@ export default function Home() {
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [error, setError] = useState('')
   const [coupons, setCoupons] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [daysFilter, setDaysFilter] = useState(14)
@@ -21,24 +22,32 @@ export default function Home() {
   }, [])
 
   const handleConnect = async () => {
+    setError('')
     try {
       const response = await fetch('/api/auth/gmail/connect')
       const data = await response.json()
-      window.location.href = data.url
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        setError('Failed to connect to Gmail. Please try again.')
+      }
     } catch (error) {
       console.error('Error connecting to Gmail:', error)
+      setError('Failed to connect to Gmail. Please try again.')
     }
   }
 
   const handleScanEmails = async () => {
     setIsLoading(true)
+    setError('')
     try {
       // Get tokens from URL parameters
       const urlParams = new URLSearchParams(window.location.search)
       const tokensParam = urlParams.get('tokens')
       
       if (!tokensParam) {
-        console.error('No tokens found')
+        setError('Authentication error. Please try connecting again.')
+        setIsLoading(false)
         return
       }
 
@@ -47,14 +56,24 @@ export default function Home() {
           'Authorization': `Bearer ${tokensParam}`
         }
       })
-      const data = await response.json()
-      if (data.error) {
-        console.error('Error scanning emails:', data.error)
-        return
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to scan emails')
       }
+
+      const data = await response.json()
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to scan emails')
+      }
+
       setCoupons(data.coupons)
+      if (data.hasMore) {
+        console.log(`Found ${data.totalFound} emails, showing first ${data.coupons.length}`)
+      }
     } catch (error) {
       console.error('Error scanning emails:', error)
+      setError(error instanceof Error ? error.message : 'Failed to scan emails. Please try again.')
     }
     setIsLoading(false)
   }
@@ -96,6 +115,16 @@ export default function Home() {
                   Successfully connected to Gmail!
                 </motion.div>
               )}
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="bg-red-100 text-red-800 p-4 rounded-lg text-center"
+                >
+                  {error}
+                </motion.div>
+              )}
             </AnimatePresence>
 
             <div className="flex gap-4">
@@ -108,7 +137,10 @@ export default function Home() {
               />
               <select
                 value={daysFilter}
-                onChange={(e) => setDaysFilter(Number(e.target.value))}
+                onChange={(e) => {
+                  setDaysFilter(Number(e.target.value))
+                  handleScanEmails()
+                }}
                 className="p-2 border rounded-lg"
               >
                 <option value={7}>Last 7 days</option>
@@ -123,46 +155,52 @@ export default function Home() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredCoupons.map((coupon: any, index: number) => (
-                  <a
-                    key={index}
-                    href={coupon.emailLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block"
-                  >
-                    <div className="border rounded-lg p-4 hover:bg-pink-50 hover:border-pink-200 transition-colors">
-                      <h3 className="font-semibold text-lg">{coupon.store}</h3>
-                      {coupon.description && (
-                        <p className="text-gray-600 mt-2 mb-3">{coupon.description}</p>
-                      )}
-                      {coupon.code !== 'NO_CODE_NEEDED' && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <span className="text-primary font-mono">Code:</span>
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault()
-                              navigator.clipboard.writeText(coupon.code)
-                            }}
-                            className="font-mono bg-pink-50 px-2 py-1 rounded hover:bg-pink-100 transition-colors"
-                            title="Click to copy"
-                          >
-                            {coupon.code}
-                          </button>
-                        </div>
-                      )}
-                      {coupon.expiryDate && (
-                        <p className="text-sm text-gray-500 mt-2">
-                          Expires: {new Date(coupon.expiryDate).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'long',
-                            day: 'numeric'
-                          })}
-                        </p>
-                      )}
-                    </div>
-                  </a>
-                ))}
+                {filteredCoupons.length === 0 ? (
+                  <div className="col-span-2 text-center text-gray-500 py-8">
+                    No coupons found. Try adjusting your search or scan period.
+                  </div>
+                ) : (
+                  filteredCoupons.map((coupon: any, index: number) => (
+                    <a
+                      key={index}
+                      href={coupon.emailLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <div className="border rounded-lg p-4 hover:bg-pink-50 hover:border-pink-200 transition-colors">
+                        <h3 className="font-semibold text-lg">{coupon.store}</h3>
+                        {coupon.description && (
+                          <p className="text-gray-600 mt-2 mb-3">{coupon.description}</p>
+                        )}
+                        {coupon.code !== 'NO_CODE_NEEDED' && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="text-primary font-mono">Code:</span>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                navigator.clipboard.writeText(coupon.code)
+                              }}
+                              className="font-mono bg-pink-50 px-2 py-1 rounded hover:bg-pink-100 transition-colors"
+                              title="Click to copy"
+                            >
+                              {coupon.code}
+                            </button>
+                          </div>
+                        )}
+                        {coupon.expiryDate && (
+                          <p className="text-sm text-gray-500 mt-2">
+                            Expires: {new Date(coupon.expiryDate).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric'
+                            })}
+                          </p>
+                        )}
+                      </div>
+                    </a>
+                  ))
+                )}
               </div>
             )}
           </div>

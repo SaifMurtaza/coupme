@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { GmailClient } from '@/lib/server/gmail'
 
+// Switch to Node.js runtime
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     const client = new GmailClient(
