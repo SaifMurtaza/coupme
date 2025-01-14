@@ -75,7 +75,11 @@ export async function GET(request: NextRequest) {
     console.log('Executing Gmail search query...')
     const searchQuery = `{
       category:promotions 
-      (subject:"coupon" OR subject:"promo" OR subject:"discount" OR subject:"sale" OR subject:"offer" OR subject:"deal" OR subject:"save" OR subject:"%" OR subject:"exclusive" OR subject:"special")
+      (
+        (subject:"coupon code" OR subject:"promo code" OR subject:"discount code")
+        OR (subject:"% off" OR subject:"save")
+      )
+      -"order confirmation" -"shipping confirmation" -"delivered" -"receipt" -"invoice"
       after:${afterString}
     }`.replace(/\s+/g, ' ').trim()
     console.log('Search query:', searchQuery)

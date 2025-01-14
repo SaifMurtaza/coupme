@@ -1,16 +1,11 @@
 import { CouponData } from '@/types/email'
 
 const COUPON_PATTERNS = [
-  /\b[A-Z0-9]{4,20}\b/,
   /CODE:?\s*([A-Z0-9]{4,20})/i,
   /COUPON:?\s*([A-Z0-9]{4,20})/i,
   /PROMO:?\s*([A-Z0-9]{4,20})/i,
   /USE:?\s*([A-Z0-9]{4,20})/i,
   /ENTER:?\s*([A-Z0-9]{4,20})/i,
-  /APPLY:?\s*([A-Z0-9]{4,20})/i,
-  /SAVE:?\s*([A-Z0-9]{4,20})/i,
-  /GET:?\s*([A-Z0-9]{4,20})/i,
-  /DISCOUNT:?\s*([A-Z0-9]{4,20})/i,
 ]
 
 const DISCOUNT_PATTERNS = [
@@ -18,14 +13,6 @@ const DISCOUNT_PATTERNS = [
   /save\s*(\d+)%/i,
   /(\d+)%\s*discount/i,
   /\$(\d+)\s*off/i,
-  /up to (\d+)%/i,
-  /save up to (\d+)%/i,
-  /(\d+)%\s*savings/i,
-  /save \$(\d+)/i,
-  /extra (\d+)%/i,
-  /additional (\d+)%/i,
-  /(\d+)%\s*sale/i,
-  /get (\d+)%\s*off/i,
 ]
 
 function extractStore(email: any): string {
@@ -53,11 +40,13 @@ function extractCode(content: string): string {
       const match = content.match(pattern)
       if (match) {
         const code = match[1] || match[0]
-        // Only accept codes that look legitimate
+        // Strict validation for coupon codes
         if (code.length >= 4 && code.length <= 20 && 
             !/mso|width|height|margin|padding|DOCTYPE|HTML|style|class|span|font/i.test(code) &&
             !/^[0-9]+$/.test(code) && // Exclude pure numbers
-            !/^[A-Z]+$/.test(code)) { // Exclude pure letters
+            !/^[A-Z]+$/.test(code) && // Exclude pure letters
+            !/[<>{}\[\]()\/\\]/.test(code) && // Exclude special characters
+            !/^(USE|CODE|PROMO|COUPON|ENTER)$/i.test(code)) { // Exclude instruction words
           return code
         }
       }
@@ -88,15 +77,15 @@ function extractDescription(content: string): string {
   try {
     // Remove HTML tags, CSS, and technical content
     const cleanContent = content
-      .replace(/<[^>]*>/g, ' ') // Remove HTML tags
-      .replace(/\{[^}]+\}/g, ' ') // Remove CSS
-      .replace(/https?:\/\/\S+/g, ' ') // Remove URLs
-      .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, ' ') // Remove emails
-      .replace(/\.mso\b[^}]*}/g, ' ') // Remove MSO styles
-      .replace(/\b\w+_\w+(_\w+)*\.mso\b/g, ' ') // Remove MSO class names
-      .replace(/\b(span|div|td|tr|table|body|center|h[1-6]|ul|li|p)\b/g, ' ') // Remove HTML element names
-      .replace(/[^\w\s%$.,!?-]/g, ' ') // Remove special characters except common ones
-      .replace(/\s+/g, ' ') // Clean up whitespace
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\{[^}]+\}/g, ' ')
+      .replace(/https?:\/\/\S+/g, ' ')
+      .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, ' ')
+      .replace(/\.mso\b[^}]*}/g, ' ')
+      .replace(/\b\w+_\w+(_\w+)*\.mso\b/g, ' ')
+      .replace(/\b(span|div|td|tr|table|body|center|h[1-6]|ul|li|p)\b/g, ' ')
+      .replace(/[^\w\s%$.,!?-]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim()
 
     // Split into sentences
@@ -118,19 +107,17 @@ function extractDescription(content: string): string {
         continue
       }
 
-      // Look for promotional keywords
-      if (lower.includes('off') ||
-          lower.includes('save') ||
-          lower.includes('discount') ||
-          lower.includes('deal') ||
-          lower.includes('sale') ||
-          lower.includes('extra') ||
-          lower.includes('exclusive')) {
+      // Only include sentences that mention discounts or savings
+      if ((lower.includes('% off') ||
+           lower.includes('save') ||
+           lower.includes('discount') ||
+           (lower.includes('code') && lower.includes('off'))) &&
+          lower.length < 200) { // Limit description length
         
         // Clean up the sentence
         let cleaned = sentence.trim()
-          .replace(/^[^a-zA-Z0-9]+/, '') // Remove leading special characters
-          .replace(/\s+/g, ' ') // Clean up spaces
+          .replace(/^[^a-zA-Z0-9]+/, '')
+          .replace(/\s+/g, ' ')
           .trim()
 
         // Add period if missing
