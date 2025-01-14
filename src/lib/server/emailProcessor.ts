@@ -1,17 +1,24 @@
 import { CouponData } from '@/types/email'
 
 const COUPON_PATTERNS = [
-  /CODE:?\s*([A-Z0-9]{4,20})/i,
-  /COUPON:?\s*([A-Z0-9]{4,20})/i,
-  /PROMO:?\s*([A-Z0-9]{4,20})/i,
-  /USE:?\s*([A-Z0-9]{4,20})/i,
-  /ENTER:?\s*([A-Z0-9]{4,20})/i,
+  // Look for exact patterns with word boundaries
+  /\bCODE[\s:-]*"?([A-Z0-9]{4,20})"?\b/i,
+  /\bCOUPON[\s:-]*"?([A-Z0-9]{4,20})"?\b/i,
+  /\bPROMO[\s:-]*"?([A-Z0-9]{4,20})"?\b/i,
+  // Look for codes in common HTML patterns
+  /<[^>]*>(CODE|COUPON|PROMO):?\s*([A-Z0-9]{4,20})<\/[^>]*>/i,
+  // Look for codes in special formatting
+  /["']([A-Z0-9]{4,20})["']\s*(?:code|coupon|promo)/i,
 ]
 
 const DISCOUNT_PATTERNS = [
-  /(\d+)%\s*off/i,
+  // Specific percentage discounts
+  /(\d+)%\s*off\s*(all|everything|storewide|sitewide|frames|lenses|contacts?)?/i,
   /save\s*(\d+)%/i,
-  /(\d+)%\s*discount/i,
+  /up\s*to\s*(\d+)%\s*off/i,
+  // Multiple discounts in one
+  /(\d+)%\s*off\s*[^+]*\+\s*(\d+)%\s*off/i,
+  // Dollar amounts
   /\$(\d+)\s*off/i,
 ]
 
@@ -30,27 +37,27 @@ function extractStore(email: any): string {
 
 function extractCode(content: string): string {
   try {
-    // Clean the content first
-    const cleanContent = content
-      .replace(/<[^>]*>/g, ' ')
+    // Most promotional emails don't have specific codes
+    // Only look for very explicit code patterns
+    const textContent = content
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/&nbsp;/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
 
-    for (const pattern of COUPON_PATTERNS) {
-      const match = content.match(pattern)
-      if (match) {
-        const code = match[1] || match[0]
-        // Strict validation for coupon codes
-        if (code.length >= 4 && code.length <= 20 && 
-            !/mso|width|height|margin|padding|DOCTYPE|HTML|style|class|span|font/i.test(code) &&
-            !/^[0-9]+$/.test(code) && // Exclude pure numbers
-            !/^[A-Z]+$/.test(code) && // Exclude pure letters
-            !/[<>{}\[\]()\/\\]/.test(code) && // Exclude special characters
-            !/^(USE|CODE|PROMO|COUPON|ENTER)$/i.test(code)) { // Exclude instruction words
-          return code
-        }
+    // Look for codes that are explicitly marked as promo codes
+    const explicitCodeMatch = textContent.match(/promo\s*code:?\s*["']?([A-Z0-9]{5,20})["']?/i) ||
+                             textContent.match(/coupon\s*code:?\s*["']?([A-Z0-9]{5,20})["']?/i) ||
+                             textContent.match(/use\s*code:?\s*["']?([A-Z0-9]{5,20})["']?/i)
+
+    if (explicitCodeMatch && explicitCodeMatch[1]) {
+      const code = explicitCodeMatch[1]
+      if (!/^(CODE|PROMO|SAVE|UPTO|EXTRA|FLASH|SALE)$/i.test(code)) {
+        return code.toUpperCase()
       }
     }
+
     return 'NO_CODE_NEEDED'
   } catch (error) {
     console.error('Error extracting code:', error)
@@ -60,9 +67,29 @@ function extractCode(content: string): string {
 
 function extractDiscount(content: string): string {
   try {
+    const textContent = content
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
     for (const pattern of DISCOUNT_PATTERNS) {
-      const match = content.match(pattern)
+      const match = textContent.match(pattern)
       if (match) {
+        // Handle multiple discounts (e.g., "60% off frames + 40% off lenses")
+        if (match[2]) {
+          return `${match[1]}% off + ${match[2]}% off`
+        }
+        // Handle "up to X%" format
+        if (pattern.source.includes('up\\s*to')) {
+          return `Up to ${match[1]}% off`
+        }
+        // Handle specific discounts with items
+        if (match[2]) {
+          return `${match[1]}% off ${match[2]}`
+        }
         return match[0]
       }
     }
@@ -75,67 +102,25 @@ function extractDiscount(content: string): string {
 
 function extractDescription(content: string): string {
   try {
-    // Clean the content first
-    const cleanContent = content
+    const textContent = content
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
       .replace(/<[^>]*>/g, ' ')
-      .replace(/\{[^}]+\}/g, ' ')
-      .replace(/https?:\/\/\S+/g, ' ')
-      .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, ' ')
-      .replace(/[^\w\s%$.,!?-]/g, ' ')
+      .replace(/&nbsp;/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
 
-    // Split into sentences
-    const sentences = cleanContent.split(/[.!?]/).filter(s => {
-      const trimmed = s.trim()
-      return trimmed.length > 0 && trimmed.length < 100 // Only consider shorter sentences
-    })
+    // Look for the main promotional message
+    const promoMatch = textContent.match(/(?:flash sale|winter sale|sale)!?\s*([^.!?]+)[.!?]/i) ||
+                      textContent.match(/(\d+%\s*off[^.!?]+)[.!?]/i) ||
+                      textContent.match(/(save [^.!?]+)[.!?]/i)
 
-    // Look for the most relevant sentence (prioritize ones with specific discounts)
-    for (const sentence of sentences) {
-      const lower = sentence.toLowerCase().trim()
-      
-      // Skip technical or non-promotional content
-      if (lower.includes('mso') || 
-          lower.includes('width') ||
-          lower.includes('unsubscribe')) {
-        continue
+    if (promoMatch && promoMatch[1]) {
+      let description = promoMatch[1].trim()
+      if (!description.endsWith('.')) {
+        description += '.'
       }
-
-      // Prioritize sentences with specific discount mentions
-      if (lower.match(/\d+%\s*off/) || 
-          lower.match(/save\s*\d+%/) ||
-          (lower.includes('code') && lower.includes('off'))) {
-        
-        let cleaned = sentence.trim()
-          .replace(/^[^a-zA-Z0-9]+/, '')
-          .replace(/\s+/g, ' ')
-          .trim()
-
-        if (!cleaned.endsWith('.')) {
-          cleaned += '.'
-        }
-
-        return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
-      }
-    }
-
-    // If no specific discount found, look for any promotional content
-    for (const sentence of sentences) {
-      const lower = sentence.toLowerCase().trim()
-      
-      if (lower.includes('off') || lower.includes('save') || lower.includes('discount')) {
-        let cleaned = sentence.trim()
-          .replace(/^[^a-zA-Z0-9]+/, '')
-          .replace(/\s+/g, ' ')
-          .trim()
-
-        if (!cleaned.endsWith('.')) {
-          cleaned += '.'
-        }
-
-        return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
-      }
+      return description.charAt(0).toUpperCase() + description.slice(1)
     }
 
     return ''
