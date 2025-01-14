@@ -75,60 +75,66 @@ function extractDiscount(content: string): string {
 
 function extractDescription(content: string): string {
   try {
-    // Remove HTML tags, CSS, and technical content
+    // Clean the content first
     const cleanContent = content
       .replace(/<[^>]*>/g, ' ')
       .replace(/\{[^}]+\}/g, ' ')
       .replace(/https?:\/\/\S+/g, ' ')
       .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, ' ')
-      .replace(/\.mso\b[^}]*}/g, ' ')
-      .replace(/\b\w+_\w+(_\w+)*\.mso\b/g, ' ')
-      .replace(/\b(span|div|td|tr|table|body|center|h[1-6]|ul|li|p)\b/g, ' ')
       .replace(/[^\w\s%$.,!?-]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
 
     // Split into sentences
-    const sentences = cleanContent.split(/[.!?]/).filter(s => s.trim().length > 0)
+    const sentences = cleanContent.split(/[.!?]/).filter(s => {
+      const trimmed = s.trim()
+      return trimmed.length > 0 && trimmed.length < 100 // Only consider shorter sentences
+    })
 
-    // Look for sentences with promotional content
+    // Look for the most relevant sentence (prioritize ones with specific discounts)
     for (const sentence of sentences) {
       const lower = sentence.toLowerCase().trim()
       
-      // Skip sentences with technical terms or non-promotional content
+      // Skip technical or non-promotional content
       if (lower.includes('mso') || 
           lower.includes('width') ||
-          lower.includes('height') ||
-          lower.includes('margin') ||
-          lower.includes('padding') ||
-          lower.includes('doctype') ||
-          lower.includes('charset') ||
           lower.includes('unsubscribe')) {
         continue
       }
 
-      // Only include sentences that mention discounts or savings
-      if ((lower.includes('% off') ||
-           lower.includes('save') ||
-           lower.includes('discount') ||
-           (lower.includes('code') && lower.includes('off'))) &&
-          lower.length < 200) { // Limit description length
+      // Prioritize sentences with specific discount mentions
+      if (lower.match(/\d+%\s*off/) || 
+          lower.match(/save\s*\d+%/) ||
+          (lower.includes('code') && lower.includes('off'))) {
         
-        // Clean up the sentence
         let cleaned = sentence.trim()
           .replace(/^[^a-zA-Z0-9]+/, '')
           .replace(/\s+/g, ' ')
           .trim()
 
-        // Add period if missing
         if (!cleaned.endsWith('.')) {
           cleaned += '.'
         }
 
-        // Capitalize first letter
-        cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+        return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+      }
+    }
 
-        return cleaned
+    // If no specific discount found, look for any promotional content
+    for (const sentence of sentences) {
+      const lower = sentence.toLowerCase().trim()
+      
+      if (lower.includes('off') || lower.includes('save') || lower.includes('discount')) {
+        let cleaned = sentence.trim()
+          .replace(/^[^a-zA-Z0-9]+/, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+
+        if (!cleaned.endsWith('.')) {
+          cleaned += '.'
+        }
+
+        return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
       }
     }
 
