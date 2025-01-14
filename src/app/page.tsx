@@ -12,8 +12,6 @@ export default function Home() {
   const [coupons, setCoupons] = useState<CouponData[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [daysFilter, setDaysFilter] = useState(14)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
   const [alert, setAlert] = useState({ show: false, message: '', type: '' })
 
   useEffect(() => {
@@ -41,7 +39,7 @@ export default function Home() {
     }
   }
 
-  const handleScanEmails = async (page = 1) => {
+  const handleScanEmails = async () => {
     setIsLoading(true)
     setError('')
     try {
@@ -54,7 +52,7 @@ export default function Home() {
         return
       }
 
-      const response = await fetch(`/api/emails/scan?days=${daysFilter}&page=${page}`, {
+      const response = await fetch(`/api/emails/scan?days=${daysFilter}`, {
         headers: {
           'Authorization': `Bearer ${tokensParam}`
         }
@@ -70,23 +68,17 @@ export default function Home() {
         throw new Error(data.error || 'Failed to scan emails')
       }
 
-      if (page === 1) {
-        setCoupons(data.coupons)
-      } else {
-        setCoupons(prev => [...prev, ...data.coupons])
-      }
-      
-      setCurrentPage(data.currentPage)
-      setTotalPages(data.totalPages)
+      setCoupons(data.coupons)
 
       if (data.coupons.length === 0) {
-        showAlert('No new coupons found in this batch.', 'info')
+        showAlert('No coupons found in your emails.', 'info')
       } else {
-        showAlert(`Found ${data.coupons.length} new coupons!`, 'success')
-      }
-
-      if (data.hasMore) {
-        showAlert(`${data.totalFound - (page * 10)} more emails to scan. Click "Load More" to continue.`, 'info')
+        const message = `Found ${data.coupons.length} coupons${
+          data.remainingEmails > 0 
+            ? ` (${data.remainingEmails} more emails available - try adjusting the date range to scan them)`
+            : ''
+        }`
+        showAlert(message, 'success')
       }
     } catch (error) {
       console.error('Error scanning emails:', error)
@@ -175,7 +167,8 @@ export default function Home() {
             {isLoading ? (
               <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-primary mx-auto"></div>
-                <p className="mt-4 text-gray-600">Scanning for coupons...</p>
+                <p className="mt-4 text-gray-600">Scanning your emails for coupons...</p>
+                <p className="text-sm text-gray-500">This may take up to a minute</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -225,17 +218,6 @@ export default function Home() {
                     </a>
                   ))
                 )}
-              </div>
-            )}
-
-            {isConnected && !isLoading && coupons.length > 0 && currentPage < totalPages && (
-              <div className="text-center mt-8">
-                <button
-                  onClick={() => handleScanEmails(currentPage + 1)}
-                  className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
-                >
-                  Load More Coupons
-                </button>
               </div>
             )}
           </div>
