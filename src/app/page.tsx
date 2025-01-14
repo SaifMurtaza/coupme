@@ -2,15 +2,19 @@
 
 import { useState, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { CouponData } from '@/types/email'
 
 export default function Home() {
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [error, setError] = useState('')
-  const [coupons, setCoupons] = useState([])
+  const [coupons, setCoupons] = useState<CouponData[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [daysFilter, setDaysFilter] = useState(14)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [alert, setAlert] = useState({ show: false, message: '', type: '' })
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
@@ -37,11 +41,10 @@ export default function Home() {
     }
   }
 
-  const handleScanEmails = async () => {
+  const handleScanEmails = async (page = 1) => {
     setIsLoading(true)
     setError('')
     try {
-      // Get tokens from URL parameters
       const urlParams = new URLSearchParams(window.location.search)
       const tokensParam = urlParams.get('tokens')
       
@@ -51,7 +54,7 @@ export default function Home() {
         return
       }
 
-      const response = await fetch(`/api/emails/scan?days=${daysFilter}`, {
+      const response = await fetch(`/api/emails/scan?days=${daysFilter}&page=${page}`, {
         headers: {
           'Authorization': `Bearer ${tokensParam}`
         }
@@ -67,13 +70,28 @@ export default function Home() {
         throw new Error(data.error || 'Failed to scan emails')
       }
 
-      setCoupons(data.coupons)
+      if (page === 1) {
+        setCoupons(data.coupons)
+      } else {
+        setCoupons(prev => [...prev, ...data.coupons])
+      }
+      
+      setCurrentPage(data.currentPage)
+      setTotalPages(data.totalPages)
+
+      if (data.coupons.length === 0) {
+        showAlert('No new coupons found in this batch.', 'info')
+      } else {
+        showAlert(`Found ${data.coupons.length} new coupons!`, 'success')
+      }
+
       if (data.hasMore) {
-        console.log(`Found ${data.totalFound} emails, showing first ${data.coupons.length}`)
+        showAlert(`${data.totalFound - (page * 10)} more emails to scan. Click "Load More" to continue.`, 'info')
       }
     } catch (error) {
       console.error('Error scanning emails:', error)
       setError(error instanceof Error ? error.message : 'Failed to scan emails. Please try again.')
+      showAlert('Error scanning emails. Please try again.', 'error')
     }
     setIsLoading(false)
   }
@@ -87,6 +105,12 @@ export default function Home() {
       (coupon.discount && coupon.discount.toLowerCase().includes(searchString))
     )
   })
+
+  // Show alert function
+  const showAlert = (message: string, type: 'success' | 'info' | 'error') => {
+    setAlert({ show: true, message, type })
+    setTimeout(() => setAlert({ show: false, message: '', type: '' }), 5000)
+  }
 
   return (
     <main className="min-h-screen p-8">
@@ -201,6 +225,17 @@ export default function Home() {
                     </a>
                   ))
                 )}
+              </div>
+            )}
+
+            {isConnected && !isLoading && coupons.length > 0 && currentPage < totalPages && (
+              <div className="text-center mt-8">
+                <button
+                  onClick={() => handleScanEmails(currentPage + 1)}
+                  className="bg-primary text-white px-6 py-2 rounded-lg hover:bg-opacity-90 transition-colors"
+                >
+                  Load More Coupons
+                </button>
               </div>
             )}
           </div>

@@ -40,6 +40,10 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams
     const days = parseInt(searchParams.get('days') || '14')
+    const page = parseInt(searchParams.get('page') || '1')
+    const pageSize = 10
+    const startIndex = (page - 1) * pageSize
+    
     const afterDate = new Date()
     afterDate.setDate(afterDate.getDate() - days)
     const afterString = afterDate.toISOString().split('T')[0]
@@ -107,10 +111,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Limit the number of emails to process to avoid timeout
-    const maxEmails = 10
-    const limitedMessages = messages.slice(0, maxEmails)
-    if (messages.length > maxEmails) {
-      console.log(`Processing only first ${maxEmails} emails to avoid timeout`)
+    const limitedMessages = messages.slice(startIndex, startIndex + pageSize)
+    if (messages.length > startIndex + pageSize) {
+      console.log(`Processing page ${page} (${pageSize} emails per page)`)
     }
 
     try {
@@ -121,8 +124,10 @@ export async function GET(request: NextRequest) {
       return new Response(JSON.stringify({
         success: true,
         coupons,
-        hasMore: messages.length > maxEmails,
-        totalFound: messages.length
+        hasMore: messages.length > startIndex + pageSize,
+        totalFound: messages.length,
+        currentPage: page,
+        totalPages: Math.ceil(messages.length / pageSize)
       }), { 
         status: 200,
         headers: { 'Content-Type': 'application/json' }
