@@ -4,7 +4,7 @@ import { extractCouponsFromEmails } from '@/lib/server/emailProcessor'
 
 // Switch to Node.js runtime
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300
+export const maxDuration = 60
 
 export async function GET(request: NextRequest) {
   try {
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Limit the number of emails to process to avoid timeout
-    const maxEmails = 25
+    const maxEmails = 10
     const limitedMessages = messages.slice(0, maxEmails)
     if (messages.length > maxEmails) {
       console.log(`Processing only first ${maxEmails} emails to avoid timeout`)
